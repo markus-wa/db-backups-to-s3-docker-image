@@ -10,7 +10,7 @@ BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-0 0 * * *}"
 
 # Create cron job dynamically with environment sourcing
 # Note: cron requires a newline at the end of the file
-echo "${BACKUP_SCHEDULE} root . /etc/cron_env.sh; /opt/backup.sh >> /var/log/cron.log 2>&1" > /etc/cron.d/backup
+echo "${BACKUP_SCHEDULE} . /etc/cron_env.sh; /opt/backup.sh >> /var/log/cron.log 2>&1" > /etc/cron.d/backup
 echo "" >> /etc/cron.d/backup
 
 # Set proper permissions for cron job file
