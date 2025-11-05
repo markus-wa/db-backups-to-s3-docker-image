@@ -8,16 +8,9 @@ chmod +x /etc/cron_env.sh
 # Set default backup schedule if not provided
 BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-0 0 * * *}"
 
-# Create cron job dynamically with environment sourcing
+# Create cron job using crontab format (no username needed)
 # Note: cron requires a newline at the end of the file
-echo "${BACKUP_SCHEDULE} . /etc/cron_env.sh; /opt/backup.sh >> /var/log/cron.log 2>&1" > /etc/cron.d/backup
-echo "" >> /etc/cron.d/backup
-
-# Set proper permissions for cron job file
-chmod 0644 /etc/cron.d/backup
-
-# Apply cron job
-crontab /etc/cron.d/backup
+(echo "${BACKUP_SCHEDULE} . /etc/cron_env.sh; /opt/backup.sh >> /var/log/cron.log 2>&1"; echo "") | crontab -
 
 # Touch the log file so it exists
 touch /var/log/cron.log
