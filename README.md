@@ -64,6 +64,8 @@ services:
     hostname: db-backups
     volumes:
       - ./backup-logs:/var/log/backups/
+      - /root/.gnupg:/root/.gnupg:ro  # Optional: Mount GPG keyring for public key encryption
+      - ./duplicity-cache:/root/.cache/duplicity  # Required: Preserve Duplicity metadata
     env_file:
       - ./.env
 ```
@@ -94,8 +96,80 @@ Here are a list of environmental variables that are supported.
 | DB_PORT | `3306` | The database port to use when connecting to the database. |
 | DUP_FORCE_INC | `0` | Forces Duplicity to perform an incremental backup. |
 | DUP_FORCE_FULL | `0` | Forces Duplicity to perform a full backup. |
-| DUP_PASS | `12345` | This is the GnuPG passphrase which is required for restoring the backup. It is recommended you set and change this value! |
+| GPG_KEY_ID | *N/A* | **Recommended.** GPG key ID for public key encryption. When set, backups are encrypted with your GPG public key (no passphrase needed on backup server). Requires mounting `/root/.gnupg` volume. See [GPG Encryption Setup](#gpg-encryption-setup) below. |
+| DUP_PASS | `12345` | **Optional (if using GPG).** Passphrase for symmetric encryption. Used as fallback if `GPG_KEY_ID` is not set. Required for restoring symmetric-encrypted backups. |
 | HC_PING_URL | *N/A* | Optional. The ping URL for monitoring backup status using [healthchecks.io](https://healthchecks.io/) or [self-hosted Healthchecks](https://github.com/healthchecks/healthchecks). When set, the script will send start/success/failure signals. |
+
+## GPG Encryption Setup
+
+This image supports two encryption methods for Duplicity backups:
+
+### 1. GPG Public Key Encryption (Recommended)
+
+**Advantages:**
+- No passphrase needed on the backup server
+- Better security - private key never leaves your local machine
+- Even if backup server is compromised, existing backups remain encrypted
+
+**Setup:**
+
+1. **Create a GPG key pair** (on your local machine):
+   ```bash
+   gpg --full-generate-key
+   # Follow prompts to create RSA key with your details
+   ```
+
+2. **Export only the public key:**
+   ```bash
+   # List your keys to get the key ID
+   gpg --list-keys
+
+   # Export public key (example key ID)
+   gpg --armor --export 1DEC8742DC0444F467EBFA1A9530207BF925C664 > gpg-public.asc
+   ```
+
+3. **Import the public key on the backup server:**
+   ```bash
+   # Copy the public key to the server
+   scp gpg-public.asc user@backup-server:/root/
+
+   # Import it
+   gpg --import /root/gpg-public.asc
+
+   # Trust the key
+   gpg --edit-key 1DEC8742DC0444F467EBFA1A9530207BF925C664 trust
+   # Type: 5 (ultimate), y, quit
+   ```
+
+4. **Mount the GPG directory in docker-compose.yml:**
+   ```yaml
+   volumes:
+     - /root/.gnupg:/root/.gnupg:ro
+     - ./duplicity-cache:/root/.cache/duplicity
+   ```
+
+5. **Set the GPG_KEY_ID in your `.env` file:**
+   ```bash
+   GPG_KEY_ID="1DEC8742DC0444F467EBFA1A9530207BF925C664"
+   ```
+
+**Restoring backups:**
+
+To restore, use your local machine where the **private key** is stored:
+```bash
+# Duplicity will prompt for your GPG passphrase to unlock the private key
+duplicity restore s3://your-bucket/path /restore/destination
+```
+
+### 2. Symmetric Encryption (Passphrase - Less Secure)
+
+Set `DUP_PASS` environment variable with a strong passphrase. This method requires the passphrase for both encryption and decryption.
+
+```bash
+DUP_PASS="your-strong-passphrase-here"
+```
+
+**Note:** If both `GPG_KEY_ID` and `DUP_PASS` are set, GPG public key encryption takes priority.
 
 ## Credits
 * [Christian Deacon](https://github.com/gamemann)

@@ -102,9 +102,21 @@ if [[ -z "$S3_BUCKET_DIR" ]]; then
     S3_BUCKET_DIR=""
 fi
 
-# Duplicity password is recommended.
-if [[ -z "$DUP_PASS" ]]; then
-    log 1 "⚠️ Warning: 'DUP_PASS' env variable not set. This means your duplicity backup is not password-protected!"
+# Encryption validation - need either GPG key or passphrase.
+if [[ -z "$GPG_KEY_ID" && -z "$DUP_PASS" ]]; then
+    log 1 "⚠️ Warning: Neither 'GPG_KEY_ID' nor 'DUP_PASS' env variable is set. Your duplicity backup will not be encrypted!"
+fi
+
+# If GPG key is specified, validate it exists in keyring.
+if [[ -n "$GPG_KEY_ID" ]]; then
+    if ! gpg --list-keys "$GPG_KEY_ID" > /dev/null 2>&1; then
+        echo "❌ Error: GPG key '$GPG_KEY_ID' not found in keyring."
+        echo "Make sure you have mounted /root/.gnupg with the public key imported."
+
+        hc_ping "/fail" "Error: GPG key '$GPG_KEY_ID' not found in keyring."
+        exit 1
+    fi
+    log 2 "GPG public key found: $GPG_KEY_ID"
 fi
 
 if [[ -z "$DUP_FORCE_INC" ]]; then
@@ -147,7 +159,15 @@ log 2
 log 2 "Duplicity Settings"
 log 2 "\tForce Incremental: $DUP_FORCE_INC"
 log 2 "\tForce Full: $DUP_FORCE_FULL"
-log 4 "\tFile Password: $DUP_PASS"
+if [[ -n "$GPG_KEY_ID" ]]; then
+    log 2 "\tEncryption: GPG public key"
+    log 3 "\tGPG Key ID: $GPG_KEY_ID"
+elif [[ -n "$DUP_PASS" ]]; then
+    log 2 "\tEncryption: Symmetric (passphrase)"
+    log 4 "\tPassphrase: $DUP_PASS"
+else
+    log 2 "\tEncryption: None (⚠️ NOT RECOMMENDED)"
+fi
 
 # Determine file extension.
 FILE_EXT="sql"
@@ -209,8 +229,23 @@ export AWS_ENDPOINT_URL="https://${S3_ENDPOINT}"
 # Compile full S3 URL.
 S3_URL="s3://${S3_BUCKET}/${S3_BUCKET_DIR}"
 
-env PASSPHRASE="$DUP_PASS" duplicity "${DUP_CMD_ARGS[@]}" --allow-source-mismatch "$FULL_DUMP_PATH" "$S3_URL"
-ret=$?
+# Choose encryption method: GPG public key (preferred) or symmetric passphrase (fallback).
+if [[ -n "$GPG_KEY_ID" ]]; then
+    # Use GPG public key encryption (no passphrase needed on backup server).
+    log 2 "Encrypting with GPG public key..."
+    duplicity "${DUP_CMD_ARGS[@]}" --encrypt-key="$GPG_KEY_ID" --allow-source-mismatch "$FULL_DUMP_PATH" "$S3_URL"
+    ret=$?
+elif [[ -n "$DUP_PASS" ]]; then
+    # Use symmetric encryption with passphrase (less secure).
+    log 2 "Encrypting with passphrase..."
+    env PASSPHRASE="$DUP_PASS" duplicity "${DUP_CMD_ARGS[@]}" --allow-source-mismatch "$FULL_DUMP_PATH" "$S3_URL"
+    ret=$?
+else
+    # No encryption configured - upload without encryption (not recommended).
+    log 1 "⚠️ Warning: Uploading backup WITHOUT encryption!"
+    duplicity "${DUP_CMD_ARGS[@]}" --no-encryption --allow-source-mismatch "$FULL_DUMP_PATH" "$S3_URL"
+    ret=$?
+fi
 
 # Remove local backup.
 if [[ "$DEL_LOCAL" -ge 1 ]]; then

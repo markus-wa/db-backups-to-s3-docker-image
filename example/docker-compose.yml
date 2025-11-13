@@ -13,5 +13,7 @@ services:
     hostname: db-backups
     volumes:
       - ./backup-logs:/var/log/backups/
+      - /root/.gnupg:/root/.gnupg:ro
+      - ./duplicity-cache:/root/.cache/duplicity
     env_file:
       - ./.env
