@@ -213,12 +213,13 @@ fi
 log 2 "Uploading database backup to S3 storage..."
 
 # Compile part of the duplicity command.
-DUP_CMD_ARGS=("backup")
-
 if [[ "$DUP_FORCE_FULL" -ge 1 ]]; then
-    DUP_CMD_ARGS+=("full")
+    DUP_CMD_ARGS=("full")
 elif [[ "$DUP_FORCE_INC" -ge 1 ]]; then
-    DUP_CMD_ARGS+=("incremental")
+    DUP_CMD_ARGS=("incremental")
+else
+    # Auto-detect: incremental if backup exists, full if first time
+    DUP_CMD_ARGS=("incr")
 fi
 
 # We need to export some things for duplicity.
