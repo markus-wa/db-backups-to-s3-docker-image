@@ -94,6 +94,7 @@ Here are a list of environmental variables that are supported.
 | DB_USER | `root` | The user to authenticate with when performing the backup. |
 | DB_PASS | `""` | The password to authenticate with when performing the backup. |
 | DB_PORT | `3306` | The database port to use when connecting to the database. |
+| EXCLUDE_TABLES | `""` | Comma-separated list of tables to exclude from backup. For MySQL, table names without a database prefix will automatically use `DB_NAME`. For PostgreSQL, specify schema if needed (e.g., `public.table`). Example: `cache,sessions,logs` |
 | DUP_FORCE_INC | `0` | Forces Duplicity to perform an incremental backup. |
 | DUP_FORCE_FULL | `0` | Forces Duplicity to perform a full backup. |
 | GPG_KEY_ID | *N/A* | **Recommended.** GPG key ID for public key encryption. When set, backups are encrypted with your GPG public key (no passphrase needed on backup server). Requires mounting `/root/.gnupg` volume. See [GPG Encryption Setup](#gpg-encryption-setup) below. |
@@ -170,6 +171,29 @@ DUP_PASS="your-strong-passphrase-here"
 ```
 
 **Note:** If both `GPG_KEY_ID` and `DUP_PASS` are set, GPG public key encryption takes priority.
+
+## Excluding Tables from Backup
+
+You can exclude specific tables from the backup using the `EXCLUDE_TABLES` environment variable. This is useful for skipping cache tables, session tables, or other temporary data that doesn't need to be backed up.
+
+**Format:** Comma-separated list of table names
+
+**MySQL Example:**
+
+```bash
+# Simple table names (database prefix is added automatically)
+EXCLUDE_TABLES="cache,sessions,logs"
+```
+
+**PostgreSQL Examples:**
+
+```bash
+# Simple table names
+EXCLUDE_TABLES="cache,sessions,logs"
+
+# With schema prefix
+EXCLUDE_TABLES="public.cache,audit.logs,public.sessions"
+```
 
 ## Credits
 * [Christian Deacon](https://github.com/gamemann)

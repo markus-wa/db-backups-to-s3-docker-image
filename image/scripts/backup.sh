@@ -34,6 +34,41 @@ hc_ping() {
     fi
 }
 
+# Parse comma-separated excluded tables into command-line arguments.
+parse_excluded_tables() {
+    local exclude_tables="$1"
+    local db_type="$2"
+    local db_name="$3"
+    local result=""
+
+    if [[ -n "$exclude_tables" ]]; then
+        IFS=',' read -ra TABLES <<< "$exclude_tables"
+        for table in "${TABLES[@]}"; do
+            # Trim whitespace
+            table=$(echo "$table" | xargs)
+
+            # Skip empty entries
+            if [[ -z "$table" ]]; then
+                continue
+            fi
+
+            if [[ "$db_type" == "mysql" ]]; then
+                # MySQL format: --ignore-table=database.table
+                if [[ "$table" != *.* ]]; then
+                    # Add database prefix if not present
+                    table="${db_name}.${table}"
+                fi
+                result="$result --ignore-table=$table"
+            elif [[ "$db_type" == "postgresql" ]]; then
+                # PostgreSQL format: --exclude-table=table or --exclude-table=schema.table
+                result="$result --exclude-table=$table"
+            fi
+        done
+    fi
+
+    echo "$result"
+}
+
 # Set database variables to default if not already set.
 if [[ -z "$DB_TYPE" ]]; then
     log 1 "⚠️ Warning: 'DB_TYPE' env variable not set. Using 'mysql'..."
@@ -70,6 +105,9 @@ if [[ -z "$DB_PORT" ]]; then
 
     DB_PORT=3306
 fi
+
+# Optional: Tables to exclude from backup (comma-separated).
+EXCLUDE_TABLES="${EXCLUDE_TABLES:-}"
 
 # Ensure S3 variables are set.
 if [[ -z "$S3_ENDPOINT" ]]; then
@@ -153,6 +191,9 @@ log 3 "\tName: $DB_NAME"
 log 3 "\tUser: $DB_USER"
 log 4 "\tPass: $DB_PASS"
 log 3 "\tPort: $DB_PORT"
+if [[ -n "$EXCLUDE_TABLES" ]]; then
+    log 2 "\tExcluding tables: $EXCLUDE_TABLES"
+fi
 
 log 2
 
@@ -179,7 +220,8 @@ FULL_DUMP_PATH="/tmp/${DUMP_FILE_NAME}"
 log 2 "Backing up database to temporary file '$FULL_DUMP_PATH'..."
 
 if [[ "$DB_TYPE" == "mysql" ]]; then
-    mysqldump --no-tablespaces -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" > "$FULL_DUMP_PATH"
+    MYSQL_EXCLUDE_OPTS=$(parse_excluded_tables "$EXCLUDE_TABLES" "mysql" "$DB_NAME")
+    mysqldump --no-tablespaces -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASS" $MYSQL_EXCLUDE_OPTS "$DB_NAME" > "$FULL_DUMP_PATH"
 
     ret=$?
 elif [[ "$DB_TYPE" == "postgresql" ]]; then
@@ -190,7 +232,8 @@ elif [[ "$DB_TYPE" == "postgresql" ]]; then
         export PGPASSWORD="$DB_PASS"
     fi
 
-    pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" > "$FULL_DUMP_PATH"
+    PG_EXCLUDE_OPTS=$(parse_excluded_tables "$EXCLUDE_TABLES" "postgres" "$DB_NAME")
+    pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" $PG_EXCLUDE_OPTS -d "$DB_NAME" > "$FULL_DUMP_PATH"
 
     ret=$?
 else
