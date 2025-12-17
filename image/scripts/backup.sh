@@ -261,8 +261,8 @@ if [[ "$DUP_FORCE_FULL" -ge 1 ]]; then
 elif [[ "$DUP_FORCE_INC" -ge 1 ]]; then
     DUP_CMD_ARGS=("incremental")
 else
-    # Auto-detect: incremental if backup exists, full if first time
-    DUP_CMD_ARGS=("incr")
+    # Let duplicity auto-detect: full if no backup exists, incremental otherwise
+    DUP_CMD_ARGS=()
 fi
 
 # We need to export some things for duplicity.
